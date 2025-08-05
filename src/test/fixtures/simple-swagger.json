@@ -1,0 +1,166 @@
+{
+  "openapi": "3.0.0",
+  "info": {
+    "title": "Test API",
+    "description": "A simple test API",
+    "version": "1.0.0",
+    "contact": {
+      "name": "Test",
+      "email": "test@example.com"
+    }
+  },
+  "servers": [
+    {
+      "url": "https://api.test.com",
+      "description": "Test server"
+    }
+  ],
+  "paths": {
+    "/users": {
+      "get": {
+        "tags": ["Users"],
+        "summary": "Get all users",
+        "description": "Retrieve a list of all users",
+        "operationId": "users.index",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/User"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": ["Users"],
+        "summary": "Create user",
+        "description": "Create a new user",
+        "operationId": "users.store",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateUserRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/User"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/users/{id}": {
+      "get": {
+        "tags": ["Users"],
+        "summary": "Get user by ID",
+        "operationId": "users.show",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/User"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "User not found"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "User": {
+        "type": "object",
+        "required": ["id", "name", "email"],
+        "properties": {
+          "id": {
+            "type": "integer",
+            "description": "User ID",
+            "example": 1
+          },
+          "name": {
+            "type": "string",
+            "description": "User name",
+            "example": "John Doe"
+          },
+          "email": {
+            "type": "string",
+            "format": "email",
+            "description": "User email",
+            "example": "john@example.com"
+          },
+          "profile": {
+            "$ref": "#/components/schemas/UserProfile"
+          }
+        }
+      },
+      "UserProfile": {
+        "type": "object",
+        "properties": {
+          "bio": {
+            "type": "string",
+            "description": "User biography"
+          },
+          "avatar": {
+            "type": "string",
+            "format": "uri",
+            "description": "Avatar URL"
+          }
+        }
+      },
+      "CreateUserRequest": {
+        "type": "object",
+        "required": ["name", "email"],
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "User name"
+          },
+          "email": {
+            "type": "string",
+            "format": "email",
+            "description": "User email"
+          }
+        }
+      }
+    }
+  },
+  "tags": [
+    {
+      "name": "Users",
+      "description": "User management"
+    }
+  ]
+}
