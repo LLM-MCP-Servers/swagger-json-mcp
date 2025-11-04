@@ -1,7 +1,7 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { getApiInfo } from './getApiInfo';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { SwaggerManager } from '../../core/SwaggerManager';
 import { TestEnvironment, TestSwagger, mockProcessCwd } from '../../test/utils/testHelper';
+import { getApiInfo } from './getApiInfo';
 
 describe('getApiInfo', () => {
   let testEnv: TestEnvironment;
@@ -24,180 +24,180 @@ describe('getApiInfo', () => {
       name: 'test-swagger',
       fileName: 'test-swagger.json',
       swaggerContent: {
-      openapi: '3.0.0',
-      info: { title: 'Test API', version: '1.0.0' },
-      paths: {
-        '/login': {
-          post: {
-            tags: ['Authentication'],
-            summary: '用戶登入',
-            description: '用戶登入系統',
-            operationId: 'auth.login',
-            parameters: [
-              {
-                name: 'X-Client-Version',
-                in: 'header',
-                description: '客戶端版本',
-                required: false,
-                schema: { type: 'string' },
+        openapi: '3.0.0',
+        info: { title: 'Test API', version: '1.0.0' },
+        paths: {
+          '/login': {
+            post: {
+              tags: ['Authentication'],
+              summary: '用戶登入',
+              description: '用戶登入系統',
+              operationId: 'auth.login',
+              parameters: [
+                {
+                  name: 'X-Client-Version',
+                  in: 'header',
+                  description: '客戶端版本',
+                  required: false,
+                  schema: { type: 'string' },
+                },
+              ],
+              requestBody: {
+                description: '登入請求',
+                required: true,
+                content: {
+                  'application/json': {
+                    schema: { $ref: '#/components/schemas/LoginRequest' },
+                  },
+                },
               },
-            ],
-            requestBody: {
+              responses: {
+                '200': {
+                  description: '登入成功',
+                  content: {
+                    'application/json': {
+                      schema: { $ref: '#/components/schemas/LoginResponse' },
+                    },
+                  },
+                },
+                '400': {
+                  description: '請求錯誤',
+                  content: {
+                    'application/json': {
+                      schema: { $ref: '#/components/schemas/ErrorResponse' },
+                    },
+                  },
+                },
+                '401': {
+                  description: '認證失敗',
+                  content: {
+                    'application/json': {
+                      schema: { $ref: '#/components/schemas/ErrorResponse' },
+                    },
+                  },
+                },
+              },
+            },
+          },
+          '/users/{userId}': {
+            get: {
+              tags: ['Users'],
+              summary: '獲取用戶資訊',
+              operationId: 'users.getById',
+              parameters: [
+                {
+                  name: 'userId',
+                  in: 'path',
+                  description: '用戶ID',
+                  required: true,
+                  schema: { type: 'integer' },
+                },
+              ],
+              responses: {
+                '200': {
+                  description: '用戶資訊',
+                  content: {
+                    'application/json': {
+                      schema: { $ref: '#/components/schemas/User' },
+                    },
+                  },
+                },
+              },
+            },
+            put: {
+              tags: ['Users'],
+              summary: '更新用戶資訊',
+              operationId: 'users.update',
+              parameters: [
+                {
+                  name: 'userId',
+                  in: 'path',
+                  description: '用戶ID',
+                  required: true,
+                  schema: { type: 'integer' },
+                },
+              ],
+              requestBody: {
+                content: {
+                  'application/json': {
+                    schema: { $ref: '#/components/schemas/UserUpdateRequest' },
+                  },
+                },
+              },
+              responses: {
+                '200': {
+                  description: '更新成功',
+                  content: {
+                    'application/json': {
+                      schema: { $ref: '#/components/schemas/User' },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+        components: {
+          schemas: {
+            LoginRequest: {
+              type: 'object',
               description: '登入請求',
-              required: true,
-              content: {
-                'application/json': {
-                  schema: { $ref: '#/components/schemas/LoginRequest' },
-                },
+              properties: {
+                username: { type: 'string', description: '用戶名' },
+                password: { type: 'string', description: '密碼' },
+              },
+              required: ['username', 'password'],
+            },
+            LoginResponse: {
+              type: 'object',
+              description: '登入回應',
+              properties: {
+                token: { type: 'string', description: 'JWT Token' },
+                user: { $ref: '#/components/schemas/User' },
+                expires: { type: 'number', description: '過期時間戳' },
+              },
+              required: ['token', 'user'],
+            },
+            User: {
+              type: 'object',
+              description: '用戶資訊',
+              properties: {
+                id: { type: 'integer', description: '用戶ID' },
+                username: { type: 'string', description: '用戶名' },
+                email: { type: 'string', format: 'email', description: '電子郵件' },
+                profile: { $ref: '#/components/schemas/UserProfile' },
+              },
+              required: ['id', 'username', 'email'],
+            },
+            UserProfile: {
+              type: 'object',
+              description: '用戶檔案',
+              properties: {
+                firstName: { type: 'string', description: '名字' },
+                lastName: { type: 'string', description: '姓氏' },
+                avatar: { type: 'string', format: 'uri', description: '頭像URL' },
               },
             },
-            responses: {
-              '200': {
-                description: '登入成功',
-                content: {
-                  'application/json': {
-                    schema: { $ref: '#/components/schemas/LoginResponse' },
-                  },
-                },
+            UserUpdateRequest: {
+              type: 'object',
+              description: '用戶更新請求',
+              properties: {
+                email: { type: 'string', format: 'email' },
+                profile: { $ref: '#/components/schemas/UserProfile' },
               },
-              '400': {
-                description: '請求錯誤',
-                content: {
-                  'application/json': {
-                    schema: { $ref: '#/components/schemas/ErrorResponse' },
-                  },
-                },
+            },
+            ErrorResponse: {
+              type: 'object',
+              description: '錯誤回應',
+              properties: {
+                error: { type: 'string', description: '錯誤代碼' },
+                message: { type: 'string', description: '錯誤訊息' },
+                details: { type: 'object', description: '錯誤詳情' },
               },
-              '401': {
-                description: '認證失敗',
-                content: {
-                  'application/json': {
-                    schema: { $ref: '#/components/schemas/ErrorResponse' },
-                  },
-                },
-              },
+              required: ['error', 'message'],
             },
           },
         },
-        '/users/{userId}': {
-          get: {
-            tags: ['Users'],
-            summary: '獲取用戶資訊',
-            operationId: 'users.getById',
-            parameters: [
-              {
-                name: 'userId',
-                in: 'path',
-                description: '用戶ID',
-                required: true,
-                schema: { type: 'integer' },
-              },
-            ],
-            responses: {
-              '200': {
-                description: '用戶資訊',
-                content: {
-                  'application/json': {
-                    schema: { $ref: '#/components/schemas/User' },
-                  },
-                },
-              },
-            },
-          },
-          put: {
-            tags: ['Users'],
-            summary: '更新用戶資訊',
-            operationId: 'users.update',
-            parameters: [
-              {
-                name: 'userId',
-                in: 'path',
-                description: '用戶ID',
-                required: true,
-                schema: { type: 'integer' },
-              },
-            ],
-            requestBody: {
-              content: {
-                'application/json': {
-                  schema: { $ref: '#/components/schemas/UserUpdateRequest' },
-                },
-              },
-            },
-            responses: {
-              '200': {
-                description: '更新成功',
-                content: {
-                  'application/json': {
-                    schema: { $ref: '#/components/schemas/User' },
-                  },
-                },
-              },
-            },
-          },
-        },
-      },
-      components: {
-        schemas: {
-          LoginRequest: {
-            type: 'object',
-            description: '登入請求',
-            properties: {
-              username: { type: 'string', description: '用戶名' },
-              password: { type: 'string', description: '密碼' },
-            },
-            required: ['username', 'password'],
-          },
-          LoginResponse: {
-            type: 'object',
-            description: '登入回應',
-            properties: {
-              token: { type: 'string', description: 'JWT Token' },
-              user: { $ref: '#/components/schemas/User' },
-              expires: { type: 'number', description: '過期時間戳' },
-            },
-            required: ['token', 'user'],
-          },
-          User: {
-            type: 'object',
-            description: '用戶資訊',
-            properties: {
-              id: { type: 'integer', description: '用戶ID' },
-              username: { type: 'string', description: '用戶名' },
-              email: { type: 'string', format: 'email', description: '電子郵件' },
-              profile: { $ref: '#/components/schemas/UserProfile' },
-            },
-            required: ['id', 'username', 'email'],
-          },
-          UserProfile: {
-            type: 'object',
-            description: '用戶檔案',
-            properties: {
-              firstName: { type: 'string', description: '名字' },
-              lastName: { type: 'string', description: '姓氏' },
-              avatar: { type: 'string', format: 'uri', description: '頭像URL' },
-            },
-          },
-          UserUpdateRequest: {
-            type: 'object',
-            description: '用戶更新請求',
-            properties: {
-              email: { type: 'string', format: 'email' },
-              profile: { $ref: '#/components/schemas/UserProfile' },
-            },
-          },
-          ErrorResponse: {
-            type: 'object',
-            description: '錯誤回應',
-            properties: {
-              error: { type: 'string', description: '錯誤代碼' },
-              message: { type: 'string', description: '錯誤訊息' },
-              details: { type: 'object', description: '錯誤詳情' },
-            },
-            required: ['error', 'message'],
-          },
-        },
-      },
       },
     };
 
@@ -234,11 +234,11 @@ describe('getApiInfo', () => {
       expect(result.path).toBe('/login');
       expect(result.method).toBe('post');
 
-      // 驗證 operation 資訊
-      expect(result.operation?.summary).toBe('用戶登入');
-      expect(result.operation?.tags).toContain('Authentication');
-      expect(result.operation?.operationId).toBe('auth.login');
-      expect(result.operation?.description).toBe('用戶登入系統');
+      // 驗證提取的關鍵資訊（從 operation 提取）
+      expect(result.summary).toBe('用戶登入');
+      expect(result.tags).toContain('Authentication');
+      expect(result.operationId).toBe('auth.login');
+      expect(result.description).toBe('用戶登入系統');
     });
 
     it('應該能解析 requestBody schema', async () => {
@@ -325,7 +325,7 @@ describe('getApiInfo', () => {
       expect(result2.success).toBe(true);
       expect(result1.method).toBe('post');
       expect(result2.method).toBe('post');
-      expect(result1.operation?.summary).toBe(result2.operation?.summary);
+      expect(result1.summary).toBe(result2.summary);
     });
   });
 
@@ -457,15 +457,14 @@ describe('getApiInfo', () => {
         swaggerName: 'test-swagger',
         path: '/login',
         method: 'post',
-        operation: expect.any(Object),
+        summary: expect.any(String),
+        tags: expect.any(Array),
+        operationId: expect.any(String),
         parameters: expect.any(Array),
         requestBodySchema: expect.any(Object),
         responseSchemas: expect.any(Object),
         metadata: {
-          hasRequestBody: true,
-          responseCount: 3,
-          parameterCount: 1,
-          resolvedAt: expect.any(String),
+          responseStatusCodes: expect.any(Array),
         },
       });
     });
@@ -481,10 +480,13 @@ describe('getApiInfo', () => {
       );
 
       expect(result.success).toBe(true);
-      expect(result.metadata?.hasRequestBody).toBe(false);
-      expect(result.metadata?.responseCount).toBe(1);
-      expect(result.metadata?.parameterCount).toBe(1);
-      expect(new Date(result.metadata?.resolvedAt || '')).toBeInstanceOf(Date);
+      // metadata 現在只保留 responseStatusCodes (其他資訊可從 parameters/requestBodySchema 推斷)
+      expect(result.metadata?.responseStatusCodes).toEqual(['200']);
+
+      // 驗證可以從其他欄位推斷資訊
+      expect(result.requestBodySchema).toBeUndefined(); // 無 request body
+      expect(result.parameters.length).toBe(1); // 1 個參數
+      expect(result.parameters[0].required).toBe(true); // 必填參數
     });
   });
 
@@ -669,9 +671,13 @@ describe('getApiInfo', () => {
       );
 
       expect(result.success).toBe(true);
-      expect(result.metadata?.hasRequestBody).toBe(true);
-      expect(result.metadata?.responseCount).toBe(1); // 只有 201 response
-      expect(result.metadata?.parameterCount).toBe(1); // body parameter
+      // metadata 現在只保留 responseStatusCodes
+      expect(result.metadata?.responseStatusCodes).toEqual(['201']); // 只有 201 response
+
+      // 驗證可以從其他欄位推斷資訊
+      expect(result.requestBodySchema).toBeDefined(); // 有 request body
+      // 注意: Swagger 2.x 的 body parameter 會被過濾掉,不會出現在 parameters 陣列中
+      expect(result.parameters.length).toBe(0); // body parameter 已被過濾
     });
 
     it('應該能處理混合的 reference 和 inline schema', async () => {

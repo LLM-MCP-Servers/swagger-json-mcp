@@ -1,6 +1,6 @@
 import { z } from 'zod';
-import type { SwaggerManager } from '../../core/SwaggerManager.js';
 import { SchemaResolver } from '../../core/SchemaResolver.js';
+import type { SwaggerManager } from '../../core/SwaggerManager.js';
 import type { Operation, Parameter, Schema } from '../types.js';
 
 // 輸入參數 schema
@@ -10,33 +10,26 @@ const GetApiInfoInputSchema = z.object({
   method: z.string().min(1, 'method is required'),
 });
 
-// 輸出結果 schema - 增強版
+// 輸出結果 schema - 精簡版（移除冗餘，提升 token 效率）
 const GetApiInfoOutputSchema = z.object({
   success: z.boolean(),
   swaggerName: z.string(),
   path: z.string(),
   method: z.string(),
-  operation: z.any().optional(),
+  // 從 operation 提取的關鍵資訊
+  summary: z.string().optional(),
+  description: z.string().optional(),
+  tags: z.array(z.string()).optional(),
+  operationId: z.string().optional(),
+  deprecated: z.boolean().optional(),
+  // 已解析的結構化資料
   parameters: z.array(z.any()),
   requestBodySchema: z.any().optional(),
   responseSchemas: z.record(z.string(), z.any()),
+  // 簡化的 metadata（僅保留關鍵資訊）
   metadata: z
     .object({
-      hasRequestBody: z.boolean(),
-      responseCount: z.number(),
-      parameterCount: z.number(),
-      resolvedAt: z.string(),
-      // 新增的統計資訊
-      requiredParameters: z.number(),
-      optionalParameters: z.number(),
       responseStatusCodes: z.array(z.string()),
-      complexity: z.object({
-        requestBodyDepth: z.number(),
-        requestBodyProperties: z.number(),
-        maxResponseDepth: z.number(),
-        totalResponseProperties: z.number(),
-        averageResponseDepth: z.number(),
-      }),
     })
     .optional(),
   error: z.string().optional(),
@@ -53,9 +46,10 @@ export type GetApiInfoOutput = z.infer<typeof GetApiInfoOutputSchema>;
  * 遞歸解析 schema，遇到 $ref 就查找並替換
  * @param schema 要解析的 schema
  * @param resolver SchemaResolver 實例
- * @param maxDepth 最大解析深度，避免無限遞歸
+ * @param maxDepth 最大解析深度，避免無限遞歸（預設 5 層，足夠大多數 API）
  * @param currentDepth 當前解析深度
  * @returns 解析後的 schema
+ * @note 如需更深層的 schema 解析，請使用 get_schema 工具單獨查詢
  */
 function resolveSchemaRecursively(
   schema: any,
@@ -80,6 +74,52 @@ function resolveSchemaRecursively(
       return resolveSchemaRecursively(resolveResult.schema, resolver, maxDepth, currentDepth + 1);
     }
     return schema; // 解析失敗，返回原始 $ref
+  }
+
+  // 扁平化 allOf 結構,減少 token 使用
+  if (schema.allOf && Array.isArray(schema.allOf)) {
+    const merged: any = { type: schema.type || 'object' };
+    const properties: any = {};
+    const required: string[] = [];
+
+    // 合併所有 allOf 子 schema
+    for (const subSchema of schema.allOf) {
+      const resolved = resolveSchemaRecursively(subSchema, resolver, maxDepth, currentDepth + 1);
+
+      // 合併 properties
+      if (resolved.properties) {
+        Object.assign(properties, resolved.properties);
+      }
+
+      // 合併 required
+      if (resolved.required && Array.isArray(resolved.required)) {
+        required.push(...resolved.required);
+      }
+
+      // 合併其他屬性 (保留重要的 schema 屬性)
+      for (const [key, value] of Object.entries(resolved)) {
+        if (key !== 'properties' && key !== 'required' && key !== 'type' && key !== 'allOf') {
+          // 如果是陣列,合併內容
+          if (Array.isArray(value) && Array.isArray(merged[key])) {
+            merged[key] = [...merged[key], ...value];
+          }
+          // 否則直接覆蓋 (後面的優先)
+          else {
+            merged[key] = value;
+          }
+        }
+      }
+    }
+
+    // 設定合併後的 properties 和 required
+    if (Object.keys(properties).length > 0) {
+      merged.properties = properties;
+    }
+    if (required.length > 0) {
+      merged.required = [...new Set(required)]; // 去重
+    }
+
+    return merged;
   }
 
   // 對於其他對象，遞歸處理所有屬性
@@ -185,112 +225,16 @@ function resolveParameterSchemas(parameters: Parameter[], resolver: SchemaResolv
 }
 
 /**
- * 計算 schema 的複雜度指標
+ * 建立精簡的 metadata 資訊（僅保留關鍵資訊，提升 token 效率）
  */
-function calculateSchemaComplexity(schema: any): {
-  depth: number;
-  propertyCount: number;
-} {
-  if (!schema || typeof schema !== 'object') {
-    return { depth: 0, propertyCount: 0 };
-  }
-
-  let maxDepth = 0;
-  let totalProperties = 0;
-
-  function traverse(obj: any, currentDepth: number = 0): void {
-    if (!obj || typeof obj !== 'object') return;
-
-    maxDepth = Math.max(maxDepth, currentDepth);
-
-    if (obj.properties && typeof obj.properties === 'object') {
-      const propCount = Object.keys(obj.properties).length;
-      totalProperties += propCount;
-
-      for (const prop of Object.values(obj.properties)) {
-        traverse(prop, currentDepth + 1);
-      }
-    }
-
-    if (obj.items) {
-      traverse(obj.items, currentDepth + 1);
-    }
-
-    if (obj.allOf || obj.oneOf || obj.anyOf) {
-      const schemas = obj.allOf || obj.oneOf || obj.anyOf;
-      for (const subSchema of schemas) {
-        traverse(subSchema, currentDepth);
-      }
-    }
-  }
-
-  traverse(schema);
-  return { depth: maxDepth, propertyCount: totalProperties };
-}
-
-/**
- * 建立增強的 metadata 資訊
- */
-function buildEnhancedMetadata(
-  parameters: Parameter[],
-  requestBodySchema: Schema | undefined,
-  responseSchemas: Record<string, Schema>,
-): {
-  hasRequestBody: boolean;
-  responseCount: number;
-  parameterCount: number;
-  resolvedAt: string;
-  requiredParameters: number;
-  optionalParameters: number;
+function buildSimplifiedMetadata(responseSchemas: Record<string, Schema>): {
   responseStatusCodes: string[];
-  complexity: {
-    requestBodyDepth: number;
-    requestBodyProperties: number;
-    maxResponseDepth: number;
-    totalResponseProperties: number;
-    averageResponseDepth: number;
-  };
 } {
-  // 參數分類統計
-  const requiredParameters = parameters.filter((p) => p.required === true).length;
-  const optionalParameters = parameters.length - requiredParameters;
-
-  // 回應狀態碼
+  // 僅保留回應狀態碼 (其他資訊可從 parameters/requestBodySchema 推斷)
   const responseStatusCodes = Object.keys(responseSchemas).sort();
 
-  // 複雜度計算
-  const requestComplexity = calculateSchemaComplexity(requestBodySchema);
-
-  let maxResponseDepth = 0;
-  let totalResponseProperties = 0;
-  let totalResponseDepth = 0;
-  let responseCount = 0;
-
-  for (const responseSchema of Object.values(responseSchemas)) {
-    const complexity = calculateSchemaComplexity(responseSchema);
-    maxResponseDepth = Math.max(maxResponseDepth, complexity.depth);
-    totalResponseProperties += complexity.propertyCount;
-    totalResponseDepth += complexity.depth;
-    responseCount++;
-  }
-
-  const averageResponseDepth = responseCount > 0 ? totalResponseDepth / responseCount : 0;
-
   return {
-    hasRequestBody: !!requestBodySchema,
-    responseCount: Object.keys(responseSchemas).length,
-    parameterCount: parameters.length,
-    resolvedAt: new Date().toISOString(),
-    requiredParameters,
-    optionalParameters,
     responseStatusCodes,
-    complexity: {
-      requestBodyDepth: requestComplexity.depth,
-      requestBodyProperties: requestComplexity.propertyCount,
-      maxResponseDepth,
-      totalResponseProperties,
-      averageResponseDepth: Math.round(averageResponseDepth * 100) / 100,
-    },
   };
 }
 
@@ -375,17 +319,24 @@ export async function getApiInfo(
     const responseSchemas = resolveResponseSchemas(operation, resolver);
     const parameterSchemas = resolveParameterSchemas(parameters, resolver);
 
-    // 構建成功結果 - 使用增強的 metadata
+    // 構建成功結果 - 精簡版（移除 operation 冗餘，提取關鍵資訊）
     const result: GetApiInfoOutput = {
       success: true,
       swaggerName,
       path,
       method,
-      operation,
+      // 從 operation 提取關鍵資訊
+      summary: operation.summary,
+      description: operation.description,
+      tags: operation.tags,
+      operationId: operation.operationId,
+      deprecated: (operation as any).deprecated,
+      // 已解析的結構化資料
       parameters: parameterSchemas,
       requestBodySchema,
       responseSchemas,
-      metadata: buildEnhancedMetadata(parameters, requestBodySchema, responseSchemas),
+      // 精簡的 metadata
+      metadata: buildSimplifiedMetadata(responseSchemas),
     };
 
     // 驗證輸出
