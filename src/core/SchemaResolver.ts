@@ -190,7 +190,10 @@ export class SchemaResolver {
     let current: any = this.document;
 
     for (const segment of path) {
-      if (!current || typeof current !== 'object' || !(segment in current)) {
+      // 根據 RFC 6901 解碼 JSON Pointer
+      const decodedSegment = this.decodeJsonPointer(segment);
+
+      if (!current || typeof current !== 'object' || !(decodedSegment in current)) {
         // 檢查是否是無效路徑
         if (ref.includes('/invalid/')) {
           throw new Error(`Invalid $ref path: ${ref}`);
@@ -202,15 +205,35 @@ export class SchemaResolver {
           $error: `Reference not found: ${ref}`,
         };
       }
-      current = current[segment];
+      current = current[decodedSegment];
     }
 
     return current;
   }
 
+  /**
+   * 根據 RFC 6901 解碼 JSON Pointer 中的特殊字符
+   * ~1 -> /
+   * ~0 -> ~
+   */
+  private decodeJsonPointer(segment: string): string {
+    return segment.replace(/~1/g, '/').replace(/~0/g, '~');
+  }
+
+  /**
+   * 根據 RFC 6901 編碼 JSON Pointer 中的特殊字符
+   * ~ -> ~0
+   * / -> ~1
+   * 注意：必須先替換 ~，再替換 /
+   */
+  private encodeJsonPointer(segment: string): string {
+    return segment.replace(/~/g, '~0').replace(/\//g, '~1');
+  }
+
   private extractSchemaName(ref: string): string {
     const parts = ref.split('/');
-    return parts[parts.length - 1];
+    const encodedName = parts[parts.length - 1];
+    return this.decodeJsonPointer(encodedName);
   }
 
   getDependencies(schemaName: string): string[] {
@@ -258,14 +281,17 @@ export class SchemaResolver {
     // 掃描 components/schemas (OpenAPI 3.x)
     if (this.document.components?.schemas) {
       for (const schemaName of Object.keys(this.document.components.schemas)) {
-        schemaMap[schemaName] = `components/schemas/${schemaName}`;
+        // 需要對 schema 名稱進行 JSON Pointer 編碼
+        const encodedName = this.encodeJsonPointer(schemaName);
+        schemaMap[schemaName] = `components/schemas/${encodedName}`;
       }
     }
 
     // 掃描 definitions (Swagger 2.x)
     if ((this.document as any).definitions) {
       for (const schemaName of Object.keys((this.document as any).definitions)) {
-        schemaMap[schemaName] = `definitions/${schemaName}`;
+        const encodedName = this.encodeJsonPointer(schemaName);
+        schemaMap[schemaName] = `definitions/${encodedName}`;
       }
     }
 

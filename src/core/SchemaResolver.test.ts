@@ -205,4 +205,124 @@ describe('SchemaResolver', () => {
       expect(result.schema.properties.newField).toEqual({ type: 'string' });
     });
   });
+
+  describe('JSON Pointer 編碼處理', () => {
+    it('應該正確解析含有斜線 (/) 的 schema 名稱', () => {
+      const docWithSlash = {
+        openapi: '3.0.0',
+        info: { title: 'Test API', version: '1.0.0' },
+        paths: {},
+        components: {
+          schemas: {
+            'Product/IndexResponseContent': {
+              type: 'object',
+              properties: {
+                data: { type: 'array', items: { type: 'object' } },
+                total: { type: 'integer' },
+              },
+            },
+          },
+        },
+      };
+
+      const resolverWithSlash = new SchemaResolver(docWithSlash);
+      // $ref 中斜線會被編碼為 ~1
+      const result = resolverWithSlash.resolveRef(
+        '#/components/schemas/Product~1IndexResponseContent',
+      );
+
+      expect(result.type).toBe('object');
+      expect(result.properties.data).toEqual({ type: 'array', items: { type: 'object' } });
+      expect(result.properties.total).toEqual({ type: 'integer' });
+    });
+
+    it('應該正確解析含有波浪號 (~) 的 schema 名稱', () => {
+      const docWithTilde = {
+        openapi: '3.0.0',
+        info: { title: 'Test API', version: '1.0.0' },
+        paths: {},
+        components: {
+          schemas: {
+            'Schema~WithTilde': {
+              type: 'object',
+              properties: {
+                field: { type: 'string' },
+              },
+            },
+          },
+        },
+      };
+
+      const resolverWithTilde = new SchemaResolver(docWithTilde);
+      // $ref 中波浪號會被編碼為 ~0
+      const result = resolverWithTilde.resolveRef('#/components/schemas/Schema~0WithTilde');
+
+      expect(result.type).toBe('object');
+      expect(result.properties.field).toEqual({ type: 'string' });
+    });
+
+    it('應該正確處理 schema 引用中的編碼名稱', () => {
+      const docWithEncodedRef = {
+        openapi: '3.0.0',
+        info: { title: 'Test API', version: '1.0.0' },
+        paths: {},
+        components: {
+          schemas: {
+            'Product/IndexResponseContent': {
+              type: 'object',
+              properties: {
+                data: {
+                  type: 'array',
+                  items: { $ref: '#/components/schemas/Product~1Item' },
+                },
+              },
+            },
+            'Product/Item': {
+              type: 'object',
+              properties: {
+                id: { type: 'string' },
+                name: { type: 'string' },
+              },
+            },
+          },
+        },
+      };
+
+      const resolverWithEncoded = new SchemaResolver(docWithEncodedRef);
+      const result = resolverWithEncoded.resolveSchema('Product/IndexResponseContent', {
+        maxDepth: 5,
+      });
+
+      expect(result.success).toBe(true);
+      expect(result.schema.properties.data.items.type).toBe('object');
+      expect(result.schema.properties.data.items.properties.id).toEqual({ type: 'string' });
+      expect(result.dependencies).toContain('Product/IndexResponseContent');
+      expect(result.dependencies).toContain('Product/Item');
+    });
+
+    it('應該正確處理複雜的編碼組合', () => {
+      const docWithComplex = {
+        openapi: '3.0.0',
+        info: { title: 'Test API', version: '1.0.0' },
+        paths: {},
+        components: {
+          schemas: {
+            'API/V2~Response': {
+              type: 'object',
+              properties: {
+                status: { type: 'string' },
+              },
+            },
+          },
+        },
+      };
+
+      const resolverComplex = new SchemaResolver(docWithComplex);
+      // API/V2~Response -> API~1V2~0Response
+      const result = resolverComplex.resolveRef('#/components/schemas/API~1V2~0Response');
+
+      expect(result.type).toBe('object');
+      expect(result.properties.status).toEqual({ type: 'string' });
+    });
+  });
 });
